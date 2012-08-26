@@ -1,0 +1,12 @@
+[submodule "submodules/weblinking"]
+	path = submodules/weblinking
+	url = https://github.com/fuzzyBSc/weblinking.git
+[submodule "submodules/qunit"]
+	path = submodules/qunit
+	url = https://github.com/jquery/qunit.git
+[submodule "submodules/jquery-mockjax"]
+	path = submodules/jquery-mockjax
+	url = https://github.com/appendto/jquery-mockjax.git
+[submodule "submodules/jquery"]
+	path = submodules/jquery
+	url = https://github.com/jquery/jquery.git
