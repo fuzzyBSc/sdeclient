@@ -5,38 +5,24 @@
 	// Private
 	
 	var defaults = {
+		// Period to wait between subsequent polls when long polls are not
+		// supported or are not being offered.
 		minimumPollPeriod_ms: 4000,
-		autoFetch: true
-	};
+		// Period to wait for a long poll. Setting this value to zero disables
+		// long poll functionality.
+		timeout_ms : 30000,
 
-	var mainDefaults = {
+		// Ajax defaults
 		cache : true,
 		global : false
-	};
-
-	var deltaDefaults = {
-		cache : true,
-		global : false
-	};
-
-	var overrides = {
-
-	};
-
-	var mainOverrides = {
-
-	};
-	
-	var deltaOverrides = {
-		// Force a particular timeout for now until we can figure out how to
-		// integrate with $.ajaxSettings and the like
-		timeout : 30000,
-		headers : { "Request-Timeout": 30 }
 	};
 
 	var sde = {
 		/**
 		 * Fetch new data immediately
+		 * 
+		 * Note that normal request timeout settings will apply, so if long poll
+		 * is in use this request will result in a long poll.
 		 * 
 		 * @name sde.fetch
 		 * @return {!jQuery.Promise} A promise object that can be used to
@@ -58,7 +44,6 @@
 		
 		start: function() {
 			this.stopped = false;
-			this.settings.autoFetch = true;
 			this.fetch();
 		},
 
@@ -73,16 +58,16 @@
 			this.deferredFetch = null;
 			
 			this.lastFetchDate = new Date();
-			if (this.deltaSettings.url) {
+			if (this.settings.delta.url) {
 				// Fetch delta
-				this.ajax = $.ajax(this.deltaSettings);
+				this.ajax = $.ajax(this.settings.delta);
 				this.ajax.then(
 					function (data) { obj.deltaDone(data); },
 					function (data) { obj.deltaFail(data); }
 					);
 			} else {
 				// Fetch main
-				this.ajax = $.ajax(this.mainSettings);
+				this.ajax = $.ajax(this.settings.main);
 				this.ajax.then(
 					function (data) { obj.mainDone(data); },
 					function (data) { obj.mainFail(data); }
@@ -124,7 +109,8 @@
 			if (!this.ajax && !this.stopped) {
 				if (this.deferredFetch) {
 					this.fetchImpl();
-				} else if (this.settings.autoFetch) {
+				} else if (this.settings.timeout_ms) {
+					// Long poll (ie autoFetch) is enabled
 					if (immediate) {
 						this.fetchImpl();
 					} else {
@@ -142,7 +128,7 @@
 			if (links) {
 				var delta = links.getLinkValuesByRel("delta");
 				if (delta.length == 1) {
-					this.deltaSettings.url = delta[0].href;
+					this.settings.delta.url = delta[0].href;
 				}
 			}
 			
@@ -154,18 +140,25 @@
 			// case. We shouldn't hammer the server if it turns out that delta
 			// encoding is either not supported or not being offered at this
 			// time.
-			this.startNext(this.deltaSettings.url);
+			this.startNext(this.settings.delta.url);
 		},
 
-		mainFail: function () {
+		mainFail: function (data) {
+			var isTimeout = data.readyState === 0;
 			this.ajax = null;
 
-			this.failedCallbacks.fire();
-			this.progressCallbacks.fire();
+			this.failedCallbacks.fire(data);
+			if (!isTimeout) {
+				// No contact was made with the server, so the progress meter
+				// should not change.
+				this.progressCallbacks.fire();
+			}
 
 			// A failure of the main URL is not expected to have a delta link,
-			// so we wait before fetching this main resource again.
-			this.startNext(false);
+			// so we usually wait before fetching this main resource again.
+			// However if this is a timeout then we expect we have waited long
+			// enough already.
+			this.startNext(isTimeout);
 		},
 		
 		deltaDone: function (value) {
@@ -190,10 +183,10 @@
 				if (links) {
 					var delta = links.getLinkValuesByRel("next");
 					if (delta.length == 1) {
-						this.deltaSettings.url = delta[0].href;
+						this.settings.delta.url = delta[0].href;
 					}
 				} else {
-					this.deltaSettings.url = null;
+					this.settings.delta.url = null;
 				}
 
 				this.deltaDoneCallbacks.fire(value);
@@ -219,7 +212,7 @@
 				// provides a delta but no link, so it's hard to optimise for
 				// sensibly. Here we look for consistency with a good main fetch
 				// that fails to include a delta link.
-				this.startNext(this.deltaSettings.url);
+				this.startNext(this.settings.delta.url);
 			}
 		},
 
@@ -227,7 +220,7 @@
 			this.ajax = null;
 
 			// Any delta failure should see us switching back to the main URL.
-			this.deltaSettings.url = null;
+			this.settings.delta.url = null;
 			this.progressCallbacks.fire();
 
 			// A failed delta should result in an immediate fetch to the main
@@ -260,21 +253,74 @@
 				settings = b;
 			}
 			var that = Object.create(sde);
-			that.mainSettings = $.extend({}, mainDefaults, settings, settings.main, mainOverrides);
-			that.deltaSettings = $.extend({}, deltaDefaults, settings, settings.delta, deltaOverrides);
-			//that.deltaSettings.headers = $.extend({}, deltaDefaults.headers, settings.headers, settings.delta.headers, deltaOverrides.headers);
-			that.settings = $.extend({}, defaults, settings, overrides);
+			that.settings = $.extend({}, defaults, settings);
+			that.settings.main = $.extend({}, that.settings, settings.main);
+			that.settings.delta = $.extend({}, that.settings, settings.delta);
 			if (mainURL !== undefined) {
-				that.mainSettings.url = mainURL;
+				that.settings.main.url = mainURL;
+			}
+			if (that.settings.timeout_ms) {
+				that.settings.delta.timeout = that.settings.timeout_ms;
+
+				if (!that.settings.delta.headers) {
+					that.settings.delta.headers = {};
+				}
+				if (!("Request-Timeout" in that.settings.delta.headers)) {
+					// Tell the server that we're willing to wait for 80% of our
+					// actual allowed wait time. Hopefully that 20% buffer will be
+					// enough time for them to return a 204 No Content response
+					// before we give up on the request. This can be overridden by the API user by
+					// setting the Request-Timeout header explicitly.
+					that.settings.delta.headers["Request-Timeout"] = that.settings.timeout_ms * 8 / 10000;
+				}
 			}
 			
+			/** 
+			 * Callback invoked when the main resource returns successfully.
+			 * @name sdeclient.mainDoneCallbacks
+			 */
 			that.mainDoneCallbacks = $.Callbacks();
+			/**
+			 * Callback invoked when the delta resource returns successfully.
+			 * 
+			 * Note that 204 No Content responses are not reported through this
+			 * interface.
+			 * 
+			 * @name sdeclient.deltaDoneCallbacks
+			 */
 			that.deltaDoneCallbacks = $.Callbacks();
+			/**
+			 * Callback invoked when either the main resource or delta resource
+			 * returns successfully.
+			 * 
+			 * Note that 204 No Content responses from the delta resource are
+			 * not reported through this interface.
+			 * 
+			 * @name sdeclient.doneCallbacks
+			 */
 			that.doneCallbacks = $.Callbacks();
+			/**
+			 * Callback invoked when the main resource returns failure.
+			 * 
+			 * Note that a failure of the delta resource is not reported.
+			 * Instead the fetch will fall back to the main resource.
+			 * 
+			 * @name sdeclient.doneCallbacks
+			 */
 			that.failedCallbacks = $.Callbacks();
+			/**
+			 * Callback invoked when progress is made.
+			 * 
+			 * Progress includes any active interaction with the server,
+			 * including success and failure responses.
+			 * 
+			 * @name sdeclient.doneCallbacks
+			 */
 			that.progressCallbacks = $.Callbacks();
 			
-			that.fetch();
+			if (that.settings.timeout_ms) {
+				that.fetch();
+			}
 			return that;
 		},
 		
