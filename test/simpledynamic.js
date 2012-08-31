@@ -14,14 +14,14 @@ asyncTest("Animate the content of a div", function () {
 
 	$.mockjax({
 		url: "/main",
-		contentType: "text/plain",
+		contentType: "text/html",
 		responseText: "<p>Hello world</p>",
 		headers: {Link: '</delta/1>; rel="delta"'}
 	});
 
 	$.mockjax({
 		url: "/delta/1",
-		contentType: "text/plain",
+		contentType: "text/html",
 		responseTime: 0,
 		responseText: "<p>foo</p>",
 		headers: {Link: '</delta/2>; rel="next"'}
@@ -29,7 +29,7 @@ asyncTest("Animate the content of a div", function () {
 
 	$.mockjax({
 		url: "/delta/2",
-		contentType: "text/plain",
+		contentType: "text/html",
 		responseTime: 0,
 		responseText: "<p>bar</p>",
 		headers: {Link: '</delta/3>; rel="next"'}
@@ -37,7 +37,7 @@ asyncTest("Animate the content of a div", function () {
 
 	$.mockjax({
 		url: "/delta/3",
-		contentType: "text/plain",
+		contentType: "text/html",
 		responseTime: 0,
 		responseText: "<p>baz</p>",
 		headers: {Link: '</delta/4>; rel="next"'}

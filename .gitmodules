@@ -10,3 +10,6 @@
 [submodule "submodules/jquery"]
 	path = submodules/jquery
 	url = https://github.com/jquery/jquery.git
+[submodule "submodules/JSON-js"]
+	path = submodules/JSON-js
+	url = https://github.com/douglascrockford/JSON-js.git

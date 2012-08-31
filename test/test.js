@@ -213,6 +213,7 @@ asyncTest("Simple manual fetch sequence", function () {
 		ok(sequence in {1:1, 3:3, 4:4}, "Progress made"); ++sequence;
 		if (sequence == 5) {
 			sde.stop();
+			$.mockjaxClear();
 			start();
 		}
 	});
