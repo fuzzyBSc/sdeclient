@@ -1,3 +1,8 @@
+/**
+ * Copyright Benjamin Carlyle 2012. See accompanying UNLICENSE file.
+ * 
+ * @author <a href="http://soundadvice.id.au/blog/">Benjamin Carlyle</a>
+ */
 /*global jQuery, weblinking*/
 (function (root, $, weblinking) {
 	'use strict';
